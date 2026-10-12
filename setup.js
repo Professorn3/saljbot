@@ -11,7 +11,7 @@ const askQuestion = (query) => new Promise(resolve => rl.question(query, resolve
 
 async function runSetup() {
     console.log('\n=============================================');
-    console.log('   Välkommen till konfigurationen av Säljbot');
+    console.log('   Konfiguration av Oneflow NTFY updater');
     console.log('=============================================\n');
     console.log('Detta skript skapar automatiskt din lokala .env-fil\nmed dina inloggningsuppgifter.\n');
 
@@ -36,14 +36,14 @@ ONEFLOW_WORKSPACE_ID=${workspaceId}
     const envPath = path.join(__dirname, '.env');
     fs.writeFileSync(envPath, envContent, 'utf8');
 
-    console.log('\n✅ Klart! Din .env-fil har skapats.');
+    console.log('\nKlart! Din .env-fil har skapats.');
     console.log('\n---------------------------------------------');
-    console.log('📱 GÖR SÅ HÄR I MOBILEN:');
+    console.log('GÖR SÅ HÄR I MOBILEN:');
     console.log('1. Ladda ner appen "ntfy" (App Store eller Google Play)');
     console.log(`2. Klicka på "+" och prenumerera på ämnet: ${topic.trim()}`);
     console.log(`   (Eller följ i webbläsaren på: https://ntfy.sh/${topic.trim()})`);
     console.log('---------------------------------------------');
-    console.log('\n🚀 FÖR ATT STARTA BOTEN:');
+    console.log('\nFÖR ATT STARTA:');
     console.log('Kör kommandot:');
     console.log('   npm start');
     console.log('Eller om du vill se webbläsaren arbeta:');
