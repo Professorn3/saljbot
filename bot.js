@@ -77,40 +77,50 @@ async function kollaOfferter() {
             await page.waitForSelector('table', { timeout: 10000 }).catch(() => null);
             await page.waitForTimeout(1000);
             
+            // Kolla direkt om sidan visar tomt resultat ("Inga resultat hittades" eller tom tabell)
+            const isEmpty = await page.locator('[data-slot="empty"], td[colspan]').count() > 0 
+                         || await page.locator('text="Inga resultat hittades"').count() > 0;
+            if (isEmpty) {
+                break;
+            }
+
             // Smart auto-skroll: Tvinga Oneflow att ladda in alla gömda rader!
             let prevCount = 0;
             let scrollAttempts = 0;
             while (scrollAttempts < 10) {
-                const currentCount = await page.locator('table tbody tr').count();
+                const currentCount = await page.locator('table tbody tr:not(:has(td[colspan]))').count();
                 if (currentCount === 0 || currentCount === prevCount) break;
                 prevCount = currentCount;
                 
                 // Skrolla ner till den sista synliga raden för att trigga fram fler
-                await page.locator('table tbody tr').nth(currentCount - 1).scrollIntoViewIfNeeded().catch(() => null);
+                await page.locator('table tbody tr:not(:has(td[colspan]))').nth(currentCount - 1).scrollIntoViewIfNeeded().catch(() => null);
                 await page.waitForTimeout(1000); // Ge sidan 1 sekund att rita ut fler rader
                 scrollAttempts++;
             }
             
-            const rows = await page.locator('table tbody tr').all();
+            const rows = await page.locator('table tbody tr:not(:has(td[colspan]))').all();
             if (rows.length === 0) {
                 // Inga rader alls på denna sida, vi har nått slutet
                 break;
             }
 
+            const klockslag = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+            console.log(`[${klockslag}] Sida ${sidan}: Läser in ${rows.length} offerter...`);
+
             let nyaOfferterPaSidan = 0;
             
             for (let i = 0; i < rows.length; i++) {
-                // Plocka ut exakt information via kolumner
-                const namn = await rows[i].locator('td:nth-child(2)').innerText().catch(() => "Okänd");
-                const visningarStr = await rows[i].locator('td:nth-child(3)').innerText().catch(() => "0");
+                // Plocka ut information med 2s timeout så det aldrig hänger
+                const namn = await rows[i].locator('td:nth-child(2)').innerText({ timeout: 2000 }).catch(() => "Okänd");
+                const visningarStr = await rows[i].locator('td:nth-child(3)').innerText({ timeout: 2000 }).catch(() => "0");
                 const visningar = parseInt(visningarStr) || 0;
-                const status = await rows[i].locator('td:nth-child(4)').innerText().catch(() => "Okänd");
+                const status = await rows[i].locator('td:nth-child(4)').innerText({ timeout: 2000 }).catch(() => "Okänd");
                 
                 // Motpart ligger i kolumn 5
                 let motpart = "Okänd";
                 const motpartsSpans = await rows[i].locator('td:nth-child(5) span[class*="_ParticipantPillName_"]').all();
                 if (motpartsSpans.length > 0) {
-                    motpart = await motpartsSpans[0].innerText();
+                    motpart = await motpartsSpans[0].innerText({ timeout: 2000 }).catch(() => "Okänd");
                 }
 
                 if (namn !== "Okänd") {
@@ -179,8 +189,15 @@ async function kollaOfferter() {
                 }
             }
 
-            // Om sidan inte gav några nya unika offerter (t.ex. vi har nått slutet eller Oneflow omdirigerar tillbaka), avbryt
+            // Om sidan inte gav några nya unika offerter, avbryt
             if (nyaOfferterPaSidan === 0) {
+                break;
+            }
+
+            // Kontrollera om det finns en aktiv "Nästa sida"-knapp.
+            // Om den är inaktiverad (disabled / aria-disabled="true") är vi på sista sidan!
+            const hasNextPage = await page.locator('a:has-text("Go to next page"):not([aria-disabled="true"]):not([disabled])').count() > 0;
+            if (!hasNextPage) {
                 break;
             }
         }
