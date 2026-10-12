@@ -1,0 +1,7 @@
+node_modules/
+.env
+historik.json
+scratch_test*.js
+*.jsprintf
+.DS_Store
+

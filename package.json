@@ -1,0 +1,20 @@
+{
+  "name": "saljbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node bot.js",
+    "show": "node bot.js --show",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.6",
+    "playwright": "^1.64.0"
+  }
+}
