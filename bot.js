@@ -68,7 +68,9 @@ async function kollaOfferter() {
         let nuvarandeOfferter = {};
         
         // 1. Identifiera alla tillgängliga workspaces / pipelines
-        const defaultWsId = process.env.ONEFLOW_WORKSPACE_ID || '553051';
+        const loginUrl = page.url();
+        const urlMatch = loginUrl.match(/\/c\/(\d+)/);
+        const defaultWsId = process.env.ONEFLOW_WORKSPACE_ID || (urlMatch ? urlMatch[1] : '553051');
         let workspaces = [];
 
         // Om användaren angett specifika workspaces manuellt i .env (t.ex. ONEFLOW_WORKSPACES=553051,553052)
@@ -85,16 +87,52 @@ async function kollaOfferter() {
                 const picker = page.locator('[data-testid="sidebar-workspace-picker"]');
                 if (await picker.count() > 0) {
                     await picker.click();
-                    await page.waitForSelector('[data-slot="combobox-item"], [role="option"]', { timeout: 3000 }).catch(() => null);
+                    await page.waitForTimeout(1000);
 
                     const upptackta = await page.evaluate(() => {
-                        const items = Array.from(document.querySelectorAll('[data-slot="combobox-item"], [role="option"]'));
+                        const popover = document.querySelector('[data-radix-popper-content-wrapper], [role="dialog"], [role="listbox"]');
+                        if (!popover) return [];
+
                         const res = [];
-                        for (const it of items) {
-                            const id = it.getAttribute('data-value');
-                            const name = it.innerText.trim();
+                        // Hitta alla relevanta element och knappar i menyn
+                        const elements = Array.from(popover.querySelectorAll('[data-slot="combobox-item"], [role="option"], button, [data-value]'));
+                        
+                        for (const it of elements) {
+                            const text = it.innerText ? it.innerText.trim() : '';
+                            if (!text) continue;
+
+                            // Kolla om detta är "Delade med mig" (ID: 0)
+                            if (text.toLowerCase().includes('delade med mig')) {
+                                if (!res.some(r => r.id === '0')) {
+                                    res.push({ id: '0', name: 'Delade med mig' });
+                                }
+                                continue;
+                            }
+
+                            // Hämta ID från vanliga attribut
+                            let id = it.getAttribute('data-value') || it.getAttribute('data-id') || it.getAttribute('value');
+                            
+                            // Om ID saknas, kolla href
+                            if (!id) {
+                                const href = it.getAttribute('href') || (it.querySelector('a') && it.querySelector('a').getAttribute('href'));
+                                if (href) {
+                                    const m = href.match(/\/c\/(\d+)/);
+                                    if (m) id = m[1];
+                                }
+                            }
+
+                            // Om ID fortfarande saknas, sök igenom elementets alla attribut efter ett siffer-ID
+                            if (!id) {
+                                for (const attr of Array.from(it.attributes)) {
+                                    if (/^\d{5,10}$/.test(attr.value)) {
+                                        id = attr.value;
+                                        break;
+                                    }
+                                }
+                            }
+
                             if (id && !res.some(r => r.id === id)) {
-                                res.push({ id, name: name || `Workspace ${id}` });
+                                res.push({ id, name: text });
                             }
                         }
                         return res;
@@ -112,7 +150,7 @@ async function kollaOfferter() {
             }
         }
 
-        // Fallback: om inga hittades i gränssnittet, använd standard från .env
+        // Fallback: om inga hittades i gränssnittet, använd standard från inloggning / .env
         if (workspaces.length === 0) {
             workspaces = [{ id: defaultWsId, name: 'Standard' }];
         }
