@@ -116,11 +116,34 @@ async function kollaOfferter() {
                 const visningar = parseInt(visningarStr) || 0;
                 const status = await rows[i].locator('td:nth-child(4)').innerText({ timeout: 2000 }).catch(() => "Okänd");
                 
-                // Motpart ligger i kolumn 5
+                // Motpart ligger i kolumn 5 – försök med flera selektorer för att klara olika Oneflow-versioner
                 let motpart = "Okänd";
-                const motpartsSpans = await rows[i].locator('td:nth-child(5) span[class*="_ParticipantPillName_"]').all();
-                if (motpartsSpans.length > 0) {
-                    motpart = await motpartsSpans[0].innerText({ timeout: 2000 }).catch(() => "Okänd");
+                const motpartSelectors = [
+                    'td:nth-child(5) span[class*="_ParticipantPillName_"]',  // Vanligast
+                    'td:nth-child(5) span[class*="ParticipantPillName"]',    // Utan understreck
+                    'td:nth-child(5) [data-slot="participant-name"]',         // Data-attribut
+                    'td:nth-child(5) [class*="pill"] span',                   // Generisk pill-span
+                    'td:nth-child(5) [class*="Pill"] span',                   // Variant med stor bokstav
+                    'td:nth-child(5) [class*="participant"] span',            // Generisk participant
+                    'td:nth-child(5) [class*="Participant"] span',            // Variant med stor bokstav
+                ];
+                for (const sel of motpartSelectors) {
+                    const els = await rows[i].locator(sel).all();
+                    if (els.length > 0) {
+                        const text = await els[0].innerText({ timeout: 2000 }).catch(() => "");
+                        if (text.trim()) {
+                            motpart = text.trim();
+                            break;
+                        }
+                    }
+                }
+                // Sista utväg: ta hela kolumn 5-texten och ta första raden om den verkar vara ett namn
+                if (motpart === "Okänd") {
+                    const col5Text = await rows[i].locator('td:nth-child(5)').innerText({ timeout: 2000 }).catch(() => "");
+                    const firstLine = col5Text.split('\n')[0].trim();
+                    if (firstLine && firstLine.length > 1 && firstLine.length < 60) {
+                        motpart = firstLine;
+                    }
                 }
 
                 if (namn !== "Okänd") {
