@@ -205,25 +205,40 @@ async function kollaOfferter() {
                 const klockslag = new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
                 console.log(`[${klockslag}] [${ws.name}] Sida ${sidan}: Läser in ${rows.length} offerter...`);
 
+                // Läs av kolumnindex dynamiskt från thead th så att ordningen alltid matchar 100%
+                const colMap = await page.evaluate(() => {
+                    const ths = Array.from(document.querySelectorAll('table thead th'));
+                    const map = { namn: 2, visningar: 3, status: 4, motpart: 5, deltagare: 6 };
+                    ths.forEach((th, idx) => {
+                        const txt = th.innerText.toLowerCase().trim();
+                        if (txt.includes('namn')) map.namn = idx + 1;
+                        else if (txt.includes('visning')) map.visningar = idx + 1;
+                        else if (txt.includes('steg') || txt.includes('status')) map.status = idx + 1;
+                        else if (txt.includes('motpart')) map.motpart = idx + 1;
+                        else if (txt.includes('deltagare')) map.deltagare = idx + 1;
+                    });
+                    return map;
+                });
+
                 let nyaOfferterPaSidan = 0;
 
                 for (let i = 0; i < rows.length; i++) {
                     // Plocka ut information med 2s timeout så det aldrig hänger
-                    const namn = await rows[i].locator('td:nth-child(2)').innerText({ timeout: 2000 }).catch(() => "Okänd");
-                    const visningarStr = await rows[i].locator('td:nth-child(3)').innerText({ timeout: 2000 }).catch(() => "0");
+                    const namn = await rows[i].locator(`td:nth-child(${colMap.namn})`).innerText({ timeout: 2000 }).catch(() => "Okänd");
+                    const visningarStr = await rows[i].locator(`td:nth-child(${colMap.visningar})`).innerText({ timeout: 2000 }).catch(() => "0");
                     const visningar = parseInt(visningarStr) || 0;
-                    const status = await rows[i].locator('td:nth-child(4)').innerText({ timeout: 2000 }).catch(() => "Okänd");
+                    const status = await rows[i].locator(`td:nth-child(${colMap.status})`).innerText({ timeout: 2000 }).catch(() => "Okänd");
 
-                    // Motpart ligger i kolumn 5 – försök med flera selektorer för att klara olika Oneflow-versioner
+                    // Motpart ligger i kolumn colMap.motpart – försök med flera selektorer för att klara olika Oneflow-versioner
                     let motpart = "Okänd";
                     const motpartSelectors = [
-                        'td:nth-child(5) span[class*="_ParticipantPillName_"]',
-                        'td:nth-child(5) span[class*="ParticipantPillName"]',
-                        'td:nth-child(5) [data-slot="participant-name"]',
-                        'td:nth-child(5) [class*="pill" i] span',
-                        'td:nth-child(5) [class*="Participant" i] span',
-                        'td:nth-child(5) [class*="pill" i]',
-                        'td:nth-child(5) [class*="Participant" i]'
+                        `td:nth-child(${colMap.motpart}) span[class*="_ParticipantPillName_"]`,
+                        `td:nth-child(${colMap.motpart}) span[class*="ParticipantPillName"]`,
+                        `td:nth-child(${colMap.motpart}) [data-slot="participant-name"]`,
+                        `td:nth-child(${colMap.motpart}) [class*="pill" i] span`,
+                        `td:nth-child(${colMap.motpart}) [class*="Participant" i] span`,
+                        `td:nth-child(${colMap.motpart}) [class*="pill" i]`,
+                        `td:nth-child(${colMap.motpart}) [class*="Participant" i]`
                     ];
                     for (const sel of motpartSelectors) {
                         const els = await rows[i].locator(sel).all();
@@ -235,10 +250,10 @@ async function kollaOfferter() {
                             }
                         }
                     }
-                    // Sista utväg: ta hela kolumn 5-texten och ta första raden
+                    // Sista utväg: ta hela motpartskolumnens text och ta första raden
                     if (motpart === "Okänd") {
-                        const col5Text = await rows[i].locator('td:nth-child(5)').innerText({ timeout: 2000 }).catch(() => "");
-                        const rader = col5Text.split('\n').map(r => r.trim()).filter(r => r.length > 0 && !r.startsWith('+'));
+                        const colText = await rows[i].locator(`td:nth-child(${colMap.motpart})`).innerText({ timeout: 2000 }).catch(() => "");
+                        const rader = colText.split('\n').map(r => r.trim()).filter(r => r.length > 0 && !r.startsWith('+'));
                         if (rader.length > 0 && rader[0].length < 60) {
                             motpart = rader[0];
                         }
@@ -268,10 +283,10 @@ async function kollaOfferter() {
                         let exaktTid = "Idag";
                         const gammalData = gamlaOfferter[sparatId];
 
-                        // Om visningar har ökat gör vi hover på profilcirkeln under Deltagare (kolumn 6)
+                        // Om visningar har ökat gör vi hover på profilcirkeln under Deltagare
                         if (gammalData && visningar > gammalData.visningar) {
                             try {
-                                const avatar = rows[i].locator('td:nth-child(6) [role="button"]').last();
+                                const avatar = rows[i].locator(`td:nth-child(${colMap.deltagare}) [role="button"]`).last();
                                 await avatar.hover({ timeout: 2000 });
                                 await page.waitForTimeout(1000); // Vänta tills popupen dyker upp
                                 
