@@ -3,25 +3,48 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
 const NTFY_TOPIC = process.env.NTFY_TOPIC || 'volttage-offerter-adam-99';
 const HISTORIK_FIL = path.join(__dirname, 'historik.json');
-async function skickaNotis(titel, meddelande) {
-    try {
-        // För att ntfy ska klara ÅÄÖ i titeln på mobilen, encodar vi den via RFC 2047 (Base64)
-        const rfc2047Titel = `=?utf-8?B?${Buffer.from(titel).toString('base64')}?=`;
-        
-        await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
-            method: 'POST',
-            body: meddelande,
-            headers: {
-                'Title': rfc2047Titel,
-                'Priority': 'high'
+
+async function skickaNotis(titel, meddelande, maxForsok = 3) {
+    const rfc2047Titel = `=?utf-8?B?${Buffer.from(titel).toString('base64')}?=`;
+    
+    for (let forsok = 1; forsok <= maxForsok; forsok++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            
+            const res = await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+                method: 'POST',
+                body: meddelande,
+                signal: controller.signal,
+                headers: {
+                    'Title': rfc2047Titel,
+                    'Priority': 'high'
+                }
+            });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                console.log('Notis skickad till ntfy!');
+                return true;
+            } else {
+                console.warn(`ntfy svarade med statuskod ${res.status} (försök ${forsok}/${maxForsok})`);
             }
-        });
-        console.log('Notis skickad till ntfy!');
-    } catch (err) {
-        console.error('Kunde inte skicka notis:', err);
+        } catch (err) {
+            console.error(`Kunde inte skicka notis (försök ${forsok}/${maxForsok}):`, err.message || err);
+        }
+
+        if (forsok < maxForsok) {
+            await new Promise(r => setTimeout(r, 2000));
+        }
     }
+    return false;
 }
 
 let forstaKorningen = true;
@@ -389,8 +412,16 @@ async function kollaOfferter() {
 
                 if (andrad) {
                     console.log(`\nUpptäckt ändring:\n${meddelande}\n`);
-                    await skickaNotis(titel, meddelande);
-                    antalAndringar++;
+                    const skickat = await skickaNotis(titel, meddelande);
+                    if (skickat) {
+                        antalAndringar++;
+                    } else {
+                        console.error(`VARNING: Notis kunde inte skickas för "${nyData.namn}". Ändringen sparas inte i historiken ännu så boten automatiskt försöker skicka den igen vid nästa kontroll.`);
+                        // Återställ i nuvarandeOfferter så boten detekterar ändringen igen nästa körning
+                        nyData.status = gammalData.status;
+                        nyData.visningar = gammalData.visningar;
+                        nyData.senastTittad = gammalData.senastTittad;
+                    }
                 }
             } else {
                 nyData.senastTittad = "Okänt";
